@@ -64,7 +64,7 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
     }
 
     const redirectUri = encodeURIComponent(window.location.origin + '/github/callback');
-    const scope = encodeURIComponent('repo user');
+    const scope = 'repo user:email';
     const state = Math.random().toString(36).substring(7);
     
     sessionStorage.setItem('github_oauth_state', state);
@@ -74,7 +74,7 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
     const left = window.screenX + (window.outerWidth - width) / 2;
     const top = window.screenY + (window.outerHeight - height) / 2;
     
-    const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=${state}`;
+    const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${encodeURIComponent(scope)}&state=${state}`;
     
     const popup = window.open(
       authUrl,
