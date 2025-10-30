@@ -129,6 +129,7 @@ Deno.serve(async (req) => {
           private: repo.private,
           description: repo.description,
           updated_at: repo.updated_at,
+          default_branch: repo.default_branch,
         })),
       }),
       {

@@ -38,7 +38,7 @@ const GitHubCallback = () => {
       const clientId = params.get('client_id') || import.meta.env.VITE_GITHUB_CLIENT_ID;
       if (clientId) {
         const redirectUri = encodeURIComponent(window.location.origin + '/github/callback');
-        window.location.href = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}`;
+        window.location.href = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=repo`;
         return;
       }
     }

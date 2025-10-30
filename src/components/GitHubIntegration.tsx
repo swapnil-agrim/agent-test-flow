@@ -76,9 +76,8 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
     // GitHub App installation flow for repository selection
     let authUrl: string;
     if (appName) {
-      // Use GitHub App installation URL - allows repository selection
-      // Using /installations/select_target ensures repo selection shows even for existing installations
-      authUrl = `https://github.com/apps/${appName}/installations/select_target?state=${state}`;
+      // Use standard GitHub App installation page with repo selection
+      authUrl = `https://github.com/apps/${appName}/installations/new?state=${state}`;
     } else {
       // Fallback to OAuth flow with repository permissions
       const redirectUri = encodeURIComponent(window.location.origin + '/github/callback');
