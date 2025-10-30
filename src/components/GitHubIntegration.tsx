@@ -55,10 +55,10 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
     const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined;
     const appName = import.meta.env.VITE_GITHUB_APP_NAME as string | undefined;
     
-    if (!clientId && !appName) {
+    if (!clientId) {
       toast({
         title: "Configuration Error",
-        description: "GitHub Client ID or App Name is not configured.",
+        description: "GitHub Client ID is not configured.",
         variant: "destructive",
       });
       setIsConnecting(false);
@@ -73,16 +73,10 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
     const left = window.screenX + (window.outerWidth - width) / 2;
     const top = window.screenY + (window.outerHeight - height) / 2;
     
-    // GitHub App installation flow for repository selection
+    // Use OAuth flow (reliable callback) and request repo scope
     let authUrl: string;
-    if (appName) {
-      // Use standard GitHub App installation page with repo selection
-      authUrl = `https://github.com/apps/${appName}/installations/new?state=${state}`;
-    } else {
-      // Fallback to OAuth flow with repository permissions
-      const redirectUri = encodeURIComponent(window.location.origin + '/github/callback');
-      authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=repo`;
-    }
+    const redirectUri = encodeURIComponent(window.location.origin + '/github/callback');
+    authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=repo`;
     
     const popup = window.open(
       authUrl,
