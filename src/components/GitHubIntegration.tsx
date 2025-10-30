@@ -182,6 +182,22 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
         variant: "destructive",
       });
       window.removeEventListener('message', handleMessage);
+    } else {
+      // Watch for user closing the popup without completing auth
+      const watch = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(watch);
+          window.removeEventListener('message', handleMessage);
+          if (!isConnected) {
+            setIsConnecting(false);
+            toast({
+              title: "GitHub window closed",
+              description: "Authorization was not completed.",
+              variant: "destructive",
+            });
+          }
+        }
+      }, 500);
     }
   };
 

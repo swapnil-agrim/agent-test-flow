@@ -2,7 +2,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { GitBranch, Database } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Label } from "./ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import {
@@ -43,6 +43,29 @@ const ImportView = () => {
   const [knowledgeBaseUrl, setKnowledgeBaseUrl] = useState("");
   const [accessToken, setAccessToken] = useState("");
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+
+  // Hydrate from previous GitHub connection if available
+  useEffect(() => {
+    try {
+      const storedRepos = localStorage.getItem('github_repositories');
+      const storedToken = localStorage.getItem('github_access_token');
+      const storedSelected = localStorage.getItem('github_selected_repo');
+      if (storedRepos && storedToken) {
+        const repos: Repository[] = JSON.parse(storedRepos);
+        setRepositories(repos);
+        setAccessToken(storedToken);
+        const initialRepo = storedSelected || repos[0]?.full_name;
+        if (initialRepo) {
+          setSelectedRepo(initialRepo);
+          const defaultBranch = repos.find(r => r.full_name === initialRepo)?.default_branch;
+          if (defaultBranch) setSelectedBranch(defaultBranch);
+          fetchBranches(initialRepo, storedToken);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to hydrate GitHub data from localStorage', e);
+    }
+  }, []);
 
   const handleGitHubConnect = (repos: Repository[], token: string) => {
     setRepositories(repos);
