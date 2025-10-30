@@ -77,11 +77,12 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
     let authUrl: string;
     if (appName) {
       // Use GitHub App installation URL - allows repository selection
-      authUrl = `https://github.com/apps/${appName}/installations/new?state=${state}`;
+      // Using /installations/select_target ensures repo selection shows even for existing installations
+      authUrl = `https://github.com/apps/${appName}/installations/select_target?state=${state}`;
     } else {
       // Fallback to OAuth flow with repository permissions
       const redirectUri = encodeURIComponent(window.location.origin + '/github/callback');
-      authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}`;
+      authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=repo`;
     }
     
     const popup = window.open(
