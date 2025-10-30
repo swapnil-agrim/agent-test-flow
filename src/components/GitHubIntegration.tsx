@@ -234,6 +234,16 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
     setSelectedRepo(null);
     setAccessToken("");
     
+    // Clear localStorage
+    try {
+      localStorage.removeItem('github_access_token');
+      localStorage.removeItem('github_username');
+      localStorage.removeItem('github_repositories');
+      localStorage.removeItem('github_selected_repo');
+    } catch (e) {
+      console.warn('Failed to clear GitHub data from localStorage', e);
+    }
+    
     toast({
       title: "Disconnected",
       description: "GitHub integration has been disconnected.",
