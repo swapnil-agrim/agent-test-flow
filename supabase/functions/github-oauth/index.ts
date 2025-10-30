@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
       throw new Error('Authorization code is required');
     }
 
-    const clientId = Deno.env.get('VITE_GITHUB_CLIENT_ID');
+    const clientId = Deno.env.get('GITHUB_CLIENT_ID');
     const clientSecret = Deno.env.get('GITHUB_CLIENT_SECRET');
 
     if (!clientId || !clientSecret) {
