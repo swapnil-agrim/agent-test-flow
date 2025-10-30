@@ -52,6 +52,7 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
     setIsConnecting(true);
     
     const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined;
+    const appName = import.meta.env.VITE_GITHUB_APP_NAME as string | undefined;
     
     if (!clientId) {
       toast({
@@ -63,10 +64,7 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
       return;
     }
 
-    const redirectUri = encodeURIComponent(window.location.origin + '/github/callback');
-    const scope = 'repo user:email';
     const state = Math.random().toString(36).substring(7);
-    
     sessionStorage.setItem('github_oauth_state', state);
     
     const width = 600;
@@ -74,7 +72,16 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
     const left = window.screenX + (window.outerWidth - width) / 2;
     const top = window.screenY + (window.outerHeight - height) / 2;
     
-    const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${encodeURIComponent(scope)}&state=${state}`;
+    // GitHub App installation flow for repository selection
+    let authUrl: string;
+    if (appName) {
+      // Use GitHub App installation URL - allows repository selection
+      authUrl = `https://github.com/apps/${appName}/installations/new?state=${state}`;
+    } else {
+      // Fallback to OAuth flow with repository permissions
+      const redirectUri = encodeURIComponent(window.location.origin + '/github/callback');
+      authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}`;
+    }
     
     const popup = window.open(
       authUrl,
@@ -91,9 +98,16 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
         
         if (returnedState === storedState) {
           try {
+            // Extract installation_id from URL if present (GitHub App flow)
+            const urlParams = new URLSearchParams(event.data.search || '');
+            const installationId = urlParams.get('installation_id');
+            
             // Exchange code for access token via backend
             const { data, error } = await supabase.functions.invoke('github-oauth', {
-              body: { code }
+              body: { 
+                code,
+                ...(installationId && { installation_id: installationId })
+              }
             });
 
             if (error) throw error;

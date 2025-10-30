@@ -10,7 +10,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { code } = await req.json();
+    const { code, installation_id } = await req.json();
     
     if (!code) {
       throw new Error('Authorization code is required');
@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
       throw new Error('GitHub OAuth credentials not configured');
     }
 
-    console.log('Exchanging code for access token...');
+    console.log('Exchanging code for access token...', { installation_id });
 
     // Exchange code for access token
     const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
@@ -70,20 +70,46 @@ Deno.serve(async (req) => {
     const userData = await userResponse.json();
     console.log('Fetched user:', userData.login);
 
-    // Fetch user's repositories (including private ones)
-    const reposResponse = await fetch('https://api.github.com/user/repos?per_page=100&sort=updated', {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Accept': 'application/vnd.github.v3+json',
-      },
-    });
-
-    if (!reposResponse.ok) {
-      throw new Error('Failed to fetch repositories');
+    let repositories = [];
+    
+    // If installation_id is provided, fetch installation repositories (GitHub App)
+    if (installation_id) {
+      console.log('Fetching installation repositories...');
+      const installationReposResponse = await fetch(
+        `https://api.github.com/user/installations/${installation_id}/repositories?per_page=100`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/vnd.github.v3+json',
+          },
+        }
+      );
+      
+      if (installationReposResponse.ok) {
+        const data = await installationReposResponse.json();
+        repositories = data.repositories || [];
+        console.log(`Fetched ${repositories.length} installation repositories`);
+      } else {
+        console.warn('Failed to fetch installation repositories, falling back to user repos');
+      }
     }
+    
+    // Fallback to user repositories if no installation or installation fetch failed
+    if (repositories.length === 0) {
+      const reposResponse = await fetch('https://api.github.com/user/repos?per_page=100&sort=updated', {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/vnd.github.v3+json',
+        },
+      });
 
-    const repositories = await reposResponse.json();
-    console.log(`Fetched ${repositories.length} repositories`);
+      if (!reposResponse.ok) {
+        throw new Error('Failed to fetch repositories');
+      }
+
+      repositories = await reposResponse.json();
+      console.log(`Fetched ${repositories.length} user repositories`);
+    }
 
     return new Response(
       JSON.stringify({
