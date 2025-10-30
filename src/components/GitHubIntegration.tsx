@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Github, ExternalLink, Copy, Check } from "lucide-react";
 import { Button } from "./ui/button";
 import {
@@ -49,6 +49,34 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
   const [accessToken, setAccessToken] = useState("");
   const [receivedAuth, setReceivedAuth] = useState(false);
   const { toast } = useToast();
+
+  // Hydrate connection state from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedAccessToken = localStorage.getItem('github_access_token');
+      const savedUsername = localStorage.getItem('github_username');
+      const savedRepositories = localStorage.getItem('github_repositories');
+      const savedSelectedRepo = localStorage.getItem('github_selected_repo');
+
+      if (savedAccessToken && savedUsername && savedRepositories) {
+        setAccessToken(savedAccessToken);
+        setUsername(savedUsername);
+        const repos = JSON.parse(savedRepositories);
+        setRepositories(repos);
+        
+        if (savedSelectedRepo) {
+          const repo = repos.find((r: Repository) => r.full_name === savedSelectedRepo);
+          setSelectedRepo(repo || repos[0] || null);
+        } else {
+          setSelectedRepo(repos[0] || null);
+        }
+        
+        setIsConnected(true);
+      }
+    } catch (e) {
+      console.warn('Failed to hydrate GitHub connection from localStorage', e);
+    }
+  }, []);
 
   const handleConnectToGitHub = () => {
     setIsConnecting(true);
