@@ -78,12 +78,11 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
     }
   }, []);
 
-  const handleConnectToGitHub = () => {
+  const handleConnectToGitHub = async () => {
     setIsConnecting(true);
     setReceivedAuth(false);
     
     const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined;
-    const appName = import.meta.env.VITE_GITHUB_APP_NAME as string | undefined;
     
     if (!clientId) {
       toast({
@@ -95,135 +94,188 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
       return;
     }
 
-    const state = Math.random().toString(36).substring(7);
-    sessionStorage.setItem('github_oauth_state', state);
-    
-    const width = 600;
-    const height = 700;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
-    
-    // Use OAuth flow (reliable callback) and request repo scope
-    let authUrl: string;
-    const redirectUri = encodeURIComponent(window.location.origin + '/github/callback');
-    authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=repo`;
-    
-    const popup = window.open(
-      authUrl,
-      'GitHub Authorization',
-      `width=${width},height=${height},left=${left},top=${top}`
-    );
-    
-    const handleMessage = async (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
+    try {
+      // Get the GitHub App slug from the backend
+      const { data: appData, error: appError } = await supabase.functions.invoke('github-oauth', {
+        body: { action: 'get_client_id' }
+      });
+
+      if (appError || !appData?.app_slug) {
+        throw new Error('Failed to get GitHub App configuration');
+      }
+
+      const state = Math.random().toString(36).substring(7);
+      sessionStorage.setItem('github_oauth_state', state);
       
-      if (event.data.type === 'github-oauth-success') {
-        setReceivedAuth(true);
-        const { code, state: returnedState } = event.data;
-        const storedState = sessionStorage.getItem('github_oauth_state');
-        
-        if (returnedState === storedState) {
-          try {
-            // Extract installation_id from event or URL if present (GitHub App flow)
-            const urlParams = new URLSearchParams(event.data.search || '');
-            const installationId = event.data.installation_id || urlParams.get('installation_id') || sessionStorage.getItem('github_installation_id');
-            
-            // Exchange code for access token via backend
-            const { data, error } = await supabase.functions.invoke('github-oauth', {
-              body: { 
-                code,
-                ...(installationId && { installation_id: installationId })
-              }
-            });
-
-            if (error) throw error;
-
-            if (data.error) {
-              throw new Error(data.error);
-            }
-
-            // Store the access token and update state
-            setAccessToken(data.access_token);
-            setUsername(data.user.login);
-            setRepositories(data.repositories);
-            setSelectedRepo(data.repositories[0] || null);
-            setIsConnected(true);
-            setIsConnecting(false);
-
-            // Persist to localStorage for ImportView hydration
-            try {
-              localStorage.setItem('github_access_token', data.access_token);
-              localStorage.setItem('github_username', data.user.login);
-              localStorage.setItem('github_repositories', JSON.stringify(data.repositories));
-              if (data.repositories[0]?.full_name) {
-                localStorage.setItem('github_selected_repo', data.repositories[0].full_name);
-              }
-            } catch (e) {
-              console.warn('Failed to persist GitHub connection to localStorage', e);
-            }
-            
-            toast({
-              title: "Connected to GitHub",
-              description: `Connected as ${data.user.login}. Found ${data.repositories.length} repositories.`,
-            });
-
-            // Pass repositories and token to parent
-            onConnect?.(data.repositories, data.access_token);
-            
-            sessionStorage.removeItem('github_oauth_state');
-            sessionStorage.removeItem('github_installation_id');
-          } catch (err: any) {
-            console.error('OAuth error:', err);
-            setIsConnecting(false);
-            toast({
-              title: "Connection Failed",
-              description: err.message || "Failed to connect to GitHub. Please try again.",
-              variant: "destructive",
-            });
-          }
-        }
-        
-        popup?.close();
-        window.removeEventListener('message', handleMessage);
-      } else if (event.data.type === 'github-oauth-error') {
-        setReceivedAuth(true);
+      const width = 600;
+      const height = 700;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+      
+      // Use GitHub App installation flow - user selects repos
+      const authUrl = `https://github.com/apps/${appData.app_slug}/installations/new?state=${state}`;
+      
+      const popup = window.open(
+        authUrl,
+        'GitHub App Installation',
+        `width=${width},height=${height},left=${left},top=${top}`
+      );
+      
+      if (!popup || popup.closed) {
         setIsConnecting(false);
         toast({
-          title: "Authorization Failed",
-          description: event.data.error || "Failed to authorize with GitHub.",
+          title: "Popup Blocked",
+          description: "Please allow popups to connect to GitHub.",
           variant: "destructive",
         });
-        popup?.close();
-        window.removeEventListener('message', handleMessage);
+        return;
       }
-    };
-    
-    window.addEventListener('message', handleMessage);
-    
-    if (!popup || popup.closed) {
-      setIsConnecting(false);
-      toast({
-        title: "Popup Blocked",
-        description: "Please allow popups to connect to GitHub.",
-        variant: "destructive",
-      });
-      window.removeEventListener('message', handleMessage);
-    } else {
-      // Watch for user closing the popup without completing auth
-      const watch = setInterval(() => {
+
+      // Watch for installation completion
+      const installationWatch = setInterval(() => {
         if (popup.closed) {
-          clearInterval(watch);
-          window.removeEventListener('message', handleMessage);
-          if (!isConnected && !receivedAuth) {
+          clearInterval(installationWatch);
+          
+          // Check if we got an installation_id in sessionStorage
+          const installationId = sessionStorage.getItem('github_installation_id');
+          
+          if (installationId) {
+            // Now redirect to OAuth to get access token
+            const redirectUri = encodeURIComponent(window.location.origin + '/github/callback');
+            const oauthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&state=${state}&scope=repo`;
+            
+            const oauthPopup = window.open(
+              oauthUrl,
+              'GitHub Authorization',
+              `width=${width},height=${height},left=${left},top=${top}`
+            );
+            
+            if (!oauthPopup) {
+              setIsConnecting(false);
+              toast({
+                title: "Authorization Required",
+                description: "Please complete the authorization to continue.",
+                variant: "destructive",
+              });
+              return;
+            }
+
+            // Set up message handler for OAuth popup
+            const handleMessage = async (event: MessageEvent) => {
+              if (event.origin !== window.location.origin) return;
+              
+              if (event.data.type === 'github-oauth-success') {
+                setReceivedAuth(true);
+                const { code, state: returnedState } = event.data;
+                const storedState = sessionStorage.getItem('github_oauth_state');
+                
+                if (returnedState === storedState) {
+                  try {
+                    // Exchange code for access token via backend
+                    const { data, error } = await supabase.functions.invoke('github-oauth', {
+                      body: { 
+                        code,
+                        installation_id: installationId
+                      }
+                    });
+
+                    if (error) throw error;
+
+                    if (data.error) {
+                      throw new Error(data.error);
+                    }
+
+                    // Store the access token and update state
+                    setAccessToken(data.access_token);
+                    setUsername(data.user.login);
+                    setRepositories(data.repositories);
+                    setSelectedRepo(data.repositories[0] || null);
+                    setIsConnected(true);
+                    setIsConnecting(false);
+
+                    // Persist to localStorage
+                    try {
+                      localStorage.setItem('github_access_token', data.access_token);
+                      localStorage.setItem('github_username', data.user.login);
+                      localStorage.setItem('github_repositories', JSON.stringify(data.repositories));
+                      if (data.repositories[0]?.full_name) {
+                        localStorage.setItem('github_selected_repo', data.repositories[0].full_name);
+                      }
+                    } catch (e) {
+                      console.warn('Failed to persist GitHub connection to localStorage', e);
+                    }
+                    
+                    toast({
+                      title: "Connected to GitHub",
+                      description: `Connected as ${data.user.login}. Found ${data.repositories.length} repositories.`,
+                    });
+
+                    // Pass repositories and token to parent
+                    onConnect?.(data.repositories, data.access_token);
+                    
+                    sessionStorage.removeItem('github_oauth_state');
+                    sessionStorage.removeItem('github_installation_id');
+                  } catch (err: any) {
+                    console.error('OAuth error:', err);
+                    setIsConnecting(false);
+                    toast({
+                      title: "Connection Failed",
+                      description: err.message || "Failed to connect to GitHub. Please try again.",
+                      variant: "destructive",
+                    });
+                  }
+                }
+                
+                oauthPopup?.close();
+                window.removeEventListener('message', handleMessage);
+              } else if (event.data.type === 'github-oauth-error') {
+                setReceivedAuth(true);
+                setIsConnecting(false);
+                toast({
+                  title: "Authorization Failed",
+                  description: event.data.error || "Failed to authorize with GitHub.",
+                  variant: "destructive",
+                });
+                oauthPopup?.close();
+                window.removeEventListener('message', handleMessage);
+              }
+            };
+            
+            window.addEventListener('message', handleMessage);
+            
+            // Watch for user closing the OAuth popup
+            const oauthWatch = setInterval(() => {
+              if (oauthPopup.closed) {
+                clearInterval(oauthWatch);
+                window.removeEventListener('message', handleMessage);
+                if (!isConnected && !receivedAuth) {
+                  setIsConnecting(false);
+                  toast({
+                    title: "Authorization window closed",
+                    description: "GitHub authorization was not completed.",
+                    variant: "destructive",
+                  });
+                }
+              }
+            }, 500);
+          } else if (!isConnected && !receivedAuth) {
             setIsConnecting(false);
             toast({
-              title: "GitHub window closed",
-              description: "Authorization was not completed.",
+              title: "Installation Incomplete",
+              description: "GitHub App installation was not completed.",
               variant: "destructive",
             });
           }
         }
       }, 500);
+    } catch (error: any) {
+      console.error('GitHub App setup error:', error);
+      setIsConnecting(false);
+      toast({
+        title: "Setup Failed",
+        description: error.message || "Failed to initialize GitHub App connection.",
+        variant: "destructive",
+      });
     }
   };
 
