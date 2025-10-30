@@ -99,9 +99,9 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
         
         if (returnedState === storedState) {
           try {
-            // Extract installation_id from URL if present (GitHub App flow)
+            // Extract installation_id from event or URL if present (GitHub App flow)
             const urlParams = new URLSearchParams(event.data.search || '');
-            const installationId = urlParams.get('installation_id');
+            const installationId = event.data.installation_id || urlParams.get('installation_id') || sessionStorage.getItem('github_installation_id');
             
             // Exchange code for access token via backend
             const { data, error } = await supabase.functions.invoke('github-oauth', {
@@ -134,6 +134,7 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
             onConnect?.(data.repositories, data.access_token);
             
             sessionStorage.removeItem('github_oauth_state');
+            sessionStorage.removeItem('github_installation_id');
           } catch (err: any) {
             console.error('OAuth error:', err);
             setIsConnecting(false);

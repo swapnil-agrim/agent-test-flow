@@ -35,6 +35,8 @@ const GitHubCallback = () => {
       }
     } else if (setupAction === 'install' && installationId) {
       // GitHub App was installed, redirect to OAuth flow
+      // Persist installation_id so we can fetch permitted repositories after OAuth
+      sessionStorage.setItem('github_installation_id', installationId);
       const clientId = params.get('client_id') || import.meta.env.VITE_GITHUB_CLIENT_ID;
       if (clientId) {
         const redirectUri = encodeURIComponent(window.location.origin + '/github/callback');
