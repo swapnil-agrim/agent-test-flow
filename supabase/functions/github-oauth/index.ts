@@ -73,10 +73,46 @@ Deno.serve(async (req) => {
     let repositories = [];
     
     // If installation_id is provided, fetch installation repositories (GitHub App)
-    if (installation_id) {
-      console.log('Fetching installation repositories...');
+    let effectiveInstallationId = installation_id;
+
+    // If no installation_id provided, try to find one from the user's installations
+    if (!effectiveInstallationId) {
+      try {
+        console.log('No installation_id provided, listing user installations...');
+        const installationsResp = await fetch('https://api.github.com/user/installations?per_page=100', {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/vnd.github.v3+json',
+          },
+        });
+        if (installationsResp.ok) {
+          const installationsData = await installationsResp.json();
+          const installations = installationsData.installations || [];
+          const appSlug = Deno.env.get('GITHUB_APP_SLUG');
+
+          if (installations.length > 0) {
+            if (appSlug) {
+              const match = installations.find((inst: any) => inst.app_slug === appSlug);
+              effectiveInstallationId = match?.id || installations[0]?.id;
+            } else {
+              effectiveInstallationId = installations[0]?.id;
+            }
+            console.log('Derived installation id:', effectiveInstallationId);
+          } else {
+            console.warn('No installations found for user');
+          }
+        } else {
+          console.warn('Failed to list user installations');
+        }
+      } catch (e) {
+        console.warn('Error while listing installations:', e);
+      }
+    }
+
+    if (effectiveInstallationId) {
+      console.log('Fetching installation repositories for', effectiveInstallationId, '...');
       const installationReposResponse = await fetch(
-        `https://api.github.com/user/installations/${installation_id}/repositories?per_page=100`,
+        `https://api.github.com/user/installations/${effectiveInstallationId}/repositories?per_page=100`,
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`,

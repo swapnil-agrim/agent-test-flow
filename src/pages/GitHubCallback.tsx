@@ -23,11 +23,14 @@ const GitHubCallback = () => {
     } else if (code && state) {
       // Send success to parent window with installation info
       if (window.opener) {
+        const installationIdParam = params.get('installation_id');
+        const storedInstallationId = sessionStorage.getItem('github_installation_id');
         window.opener.postMessage(
           { 
             type: 'github-oauth-success', 
             code, 
             state,
+            installation_id: installationIdParam || storedInstallationId || undefined,
             search: window.location.search 
           },
           window.location.origin
