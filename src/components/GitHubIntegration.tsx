@@ -55,10 +55,10 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
     const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined;
     const appName = import.meta.env.VITE_GITHUB_APP_NAME as string | undefined;
     
-    if (!clientId) {
+    if (!clientId && !appName) {
       toast({
         title: "Configuration Error",
-        description: "GitHub Client ID is not configured.",
+        description: "GitHub Client ID or App Name is not configured.",
         variant: "destructive",
       });
       setIsConnecting(false);
@@ -124,6 +124,18 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
             setSelectedRepo(data.repositories[0] || null);
             setIsConnected(true);
             setIsConnecting(false);
+
+            // Persist to localStorage for ImportView hydration
+            try {
+              localStorage.setItem('github_access_token', data.access_token);
+              localStorage.setItem('github_username', data.user.login);
+              localStorage.setItem('github_repositories', JSON.stringify(data.repositories));
+              if (data.repositories[0]?.full_name) {
+                localStorage.setItem('github_selected_repo', data.repositories[0].full_name);
+              }
+            } catch (e) {
+              console.warn('Failed to persist GitHub connection to localStorage', e);
+            }
             
             toast({
               title: "Connected to GitHub",

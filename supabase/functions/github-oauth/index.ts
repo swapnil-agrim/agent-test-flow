@@ -10,14 +10,24 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { code, installation_id } = await req.json();
-    
-    if (!code) {
-      throw new Error('Authorization code is required');
-    }
+    let body: any = {};
+    try { body = await req.json(); } catch (_) { body = {}; }
+    const { code, installation_id, action } = body;
 
     const clientId = Deno.env.get('GITHUB_CLIENT_ID');
     const clientSecret = Deno.env.get('GITHUB_CLIENT_SECRET');
+    const appSlug = Deno.env.get('GITHUB_APP_SLUG') || null;
+
+    if (action === 'get_client_id') {
+      return new Response(
+        JSON.stringify({ client_id: clientId, app_slug: appSlug }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!code) {
+      throw new Error('Authorization code is required');
+    }
 
     if (!clientId || !clientSecret) {
       throw new Error('GitHub OAuth credentials not configured');
