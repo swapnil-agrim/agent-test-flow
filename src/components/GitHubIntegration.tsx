@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from "./ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { Separator } from "./ui/separator";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Repository {
   id: number;
@@ -44,62 +45,21 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
   const [cloneProtocol, setCloneProtocol] = useState("HTTPS");
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(false);
+  const [accessToken, setAccessToken] = useState("");
   const { toast } = useToast();
 
   const handleConnectToGitHub = () => {
     setIsConnecting(true);
     
-    // GitHub OAuth flow
     const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined;
     
-    // If no OAuth app configured, use demo mode
-    if (!clientId || clientId === 'your_github_client_id') {
-      // Demo mode - simulate connection with multiple repos
-      setTimeout(() => {
-        const mockUsername = "user-" + Math.random().toString(36).substring(7);
-        const mockRepos: Repository[] = [
-          {
-            id: 1,
-            name: "qa-automation-project",
-            full_name: `${mockUsername}/qa-automation-project`,
-            clone_url: `https://github.com/${mockUsername}/qa-automation-project.git`,
-            ssh_url: `git@github.com:${mockUsername}/qa-automation-project.git`,
-            html_url: `https://github.com/${mockUsername}/qa-automation-project`,
-            private: false,
-          },
-          {
-            id: 2,
-            name: "web-app-tests",
-            full_name: `${mockUsername}/web-app-tests`,
-            clone_url: `https://github.com/${mockUsername}/web-app-tests.git`,
-            ssh_url: `git@github.com:${mockUsername}/web-app-tests.git`,
-            html_url: `https://github.com/${mockUsername}/web-app-tests`,
-            private: true,
-          },
-          {
-            id: 3,
-            name: "api-testing-suite",
-            full_name: `${mockUsername}/api-testing-suite`,
-            clone_url: `https://github.com/${mockUsername}/api-testing-suite.git`,
-            ssh_url: `git@github.com:${mockUsername}/api-testing-suite.git`,
-            html_url: `https://github.com/${mockUsername}/api-testing-suite`,
-            private: false,
-          },
-        ];
-        
-        setIsConnected(true);
-        setUsername(mockUsername);
-        setRepositories(mockRepos);
-        setSelectedRepo(mockRepos[0]);
-        setIsConnecting(false);
-        
-        toast({
-          title: "Connected to GitHub (Demo)",
-          description: "Using demo mode. Configure VITE_GITHUB_CLIENT_ID for real OAuth.",
-        });
-
-        onConnect?.(mockUsername, mockRepos[0].clone_url);
-      }, 1500);
+    if (!clientId) {
+      toast({
+        title: "Configuration Error",
+        description: "GitHub Client ID is not configured.",
+        variant: "destructive",
+      });
+      setIsConnecting(false);
       return;
     }
 
@@ -107,10 +67,8 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
     const scope = encodeURIComponent('repo user');
     const state = Math.random().toString(36).substring(7);
     
-    // Store state for verification
     sessionStorage.setItem('github_oauth_state', state);
     
-    // Open GitHub OAuth in popup
     const width = 600;
     const height = 700;
     const left = window.screenX + (window.outerWidth - width) / 2;
@@ -124,8 +82,7 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
       `width=${width},height=${height},left=${left},top=${top}`
     );
     
-    // Listen for OAuth callback
-    const handleMessage = (event: MessageEvent) => {
+    const handleMessage = async (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       
       if (event.data.type === 'github-oauth-success') {
@@ -133,37 +90,45 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
         const storedState = sessionStorage.getItem('github_oauth_state');
         
         if (returnedState === storedState) {
-          // In a real implementation:
-          // 1. Exchange code for access token via backend
-          // 2. Fetch user's repositories from GitHub API
-          // For now, use mock data
-          const mockUsername = "user-" + Math.random().toString(36).substring(7);
-          const mockRepos: Repository[] = [
-            {
-              id: 1,
-              name: "qa-automation-project",
-              full_name: `${mockUsername}/qa-automation-project`,
-              clone_url: `https://github.com/${mockUsername}/qa-automation-project.git`,
-              ssh_url: `git@github.com:${mockUsername}/qa-automation-project.git`,
-              html_url: `https://github.com/${mockUsername}/qa-automation-project`,
-              private: false,
-            },
-          ];
-          
-          setIsConnected(true);
-          setUsername(mockUsername);
-          setRepositories(mockRepos);
-          setSelectedRepo(mockRepos[0]);
-          setIsConnecting(false);
-          
-          toast({
-            title: "Connected to GitHub",
-            description: "Your project is now synced with GitHub.",
-          });
+          try {
+            // Exchange code for access token via backend
+            const { data, error } = await supabase.functions.invoke('github-oauth', {
+              body: { code }
+            });
 
-          onConnect?.(mockUsername, mockRepos[0].clone_url);
-          
-          sessionStorage.removeItem('github_oauth_state');
+            if (error) throw error;
+
+            if (data.error) {
+              throw new Error(data.error);
+            }
+
+            // Store the access token and update state
+            setAccessToken(data.access_token);
+            setUsername(data.user.login);
+            setRepositories(data.repositories);
+            setSelectedRepo(data.repositories[0] || null);
+            setIsConnected(true);
+            setIsConnecting(false);
+            
+            toast({
+              title: "Connected to GitHub",
+              description: `Connected as ${data.user.login}. Found ${data.repositories.length} repositories.`,
+            });
+
+            if (data.repositories[0]) {
+              onConnect?.(data.user.login, data.repositories[0].clone_url);
+            }
+            
+            sessionStorage.removeItem('github_oauth_state');
+          } catch (err: any) {
+            console.error('OAuth error:', err);
+            setIsConnecting(false);
+            toast({
+              title: "Connection Failed",
+              description: err.message || "Failed to connect to GitHub. Please try again.",
+              variant: "destructive",
+            });
+          }
         }
         
         popup?.close();
@@ -171,8 +136,8 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
       } else if (event.data.type === 'github-oauth-error') {
         setIsConnecting(false);
         toast({
-          title: "Connection Failed",
-          description: "Failed to connect to GitHub. Please try again.",
+          title: "Authorization Failed",
+          description: event.data.error || "Failed to authorize with GitHub.",
           variant: "destructive",
         });
         popup?.close();
@@ -182,7 +147,6 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
     
     window.addEventListener('message', handleMessage);
     
-    // Check if popup was blocked
     if (!popup || popup.closed) {
       setIsConnecting(false);
       toast({
@@ -199,6 +163,7 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
     setUsername("");
     setRepositories([]);
     setSelectedRepo(null);
+    setAccessToken("");
     
     toast({
       title: "Disconnected",
@@ -321,20 +286,20 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
 
               {/* Repository Selection */}
               <div>
-                <h3 className="text-sm font-medium mb-3">Repository</h3>
+                <h3 className="text-sm font-medium mb-3">Repository Configuration</h3>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Select the repository you want to work with.
+                  All repositories you have access to ({repositories.length} total).
                 </p>
                 
                 <Select value={selectedRepo?.full_name} onValueChange={handleRepoChange}>
                   <SelectTrigger className="w-full bg-background">
                     <SelectValue placeholder="Select a repository" />
                   </SelectTrigger>
-                  <SelectContent className="bg-popover border-border z-50">
+                  <SelectContent className="bg-popover border-border z-50 max-h-[300px]">
                     {repositories.map((repo) => (
                       <SelectItem key={repo.id} value={repo.full_name} className="cursor-pointer">
                         <div className="flex items-center gap-2">
-                          <span>{repo.name}</span>
+                          <span className="font-mono text-xs">{repo.full_name}</span>
                           {repo.private && (
                             <Badge variant="outline" className="text-xs px-1.5 py-0">
                               Private
