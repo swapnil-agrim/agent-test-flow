@@ -5,18 +5,114 @@ import { ScrollArea } from "./ui/scroll-area";
 import { useState } from "react";
 import { Label } from "./ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import GitHubIntegration from "./GitHubIntegration";
+import { useToast } from "@/hooks/use-toast";
+
+interface Repository {
+  id: number;
+  name: string;
+  full_name: string;
+  clone_url: string;
+  default_branch: string;
+}
+
+interface Branch {
+  name: string;
+  commit: {
+    sha: string;
+  };
+}
 
 const ImportView = () => {
+  const { toast } = useToast();
   const [consoleMessages] = useState([
     { time: "10:23:45", message: "System ready..." },
   ]);
   
-  const [repoUrl, setRepoUrl] = useState("");
-  const [branch, setBranch] = useState("main");
+  const [repositories, setRepositories] = useState<Repository[]>([]);
+  const [selectedRepo, setSelectedRepo] = useState<string>("");
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState("");
   const [knowledgeBaseUrl, setKnowledgeBaseUrl] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+
+  const handleGitHubConnect = (repos: Repository[], token: string) => {
+    setRepositories(repos);
+    setAccessToken(token);
+    if (repos.length > 0) {
+      setSelectedRepo(repos[0].full_name);
+      setSelectedBranch(repos[0].default_branch);
+      fetchBranches(repos[0].full_name, token);
+    }
+  };
+
+  const fetchBranches = async (repoFullName: string, token: string) => {
+    if (!repoFullName || !token) return;
+    
+    setIsLoadingBranches(true);
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/${repoFullName}/branches`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github.v3+json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch branches');
+      }
+
+      const branchesData: Branch[] = await response.json();
+      setBranches(branchesData);
+      
+      // Set default branch if not already set
+      if (!selectedBranch && branchesData.length > 0) {
+        const repo = repositories.find(r => r.full_name === repoFullName);
+        const defaultBranch = repo?.default_branch || branchesData[0].name;
+        setSelectedBranch(defaultBranch);
+      }
+    } catch (error) {
+      console.error('Error fetching branches:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch branches. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingBranches(false);
+    }
+  };
+
+  const handleRepoChange = (repoFullName: string) => {
+    setSelectedRepo(repoFullName);
+    setBranches([]);
+    setSelectedBranch("");
+    fetchBranches(repoFullName, accessToken);
+  };
 
   const handleSync = () => {
-    console.log("Syncing with:", { repoUrl, branch, knowledgeBaseUrl });
+    const repo = repositories.find(r => r.full_name === selectedRepo);
+    console.log("Syncing with:", { 
+      repoUrl: repo?.clone_url, 
+      branch: selectedBranch, 
+      knowledgeBaseUrl 
+    });
+    
+    toast({
+      title: "Sync Configuration",
+      description: `Ready to sync ${selectedRepo} (${selectedBranch})`,
+    });
   };
 
   return (
@@ -24,11 +120,14 @@ const ImportView = () => {
       <div className="h-full flex flex-col">
         <div className="flex-1 overflow-auto p-8">
           <div className="max-w-4xl mx-auto">
-            <div className="mb-8">
-              <h2 className="text-3xl font-bold mb-2">Setup & Sync</h2>
-              <p className="text-muted-foreground">
-                Connect your repository and knowledge base to sync test cases with your working branch
-              </p>
+            <div className="mb-8 flex items-center justify-between">
+              <div>
+                <h2 className="text-3xl font-bold mb-2">Setup & Sync</h2>
+                <p className="text-muted-foreground">
+                  Connect your repository and knowledge base to sync test cases with your working branch
+                </p>
+              </div>
+              <GitHubIntegration onConnect={handleGitHubConnect} />
             </div>
 
             <div className="space-y-6">
@@ -48,26 +147,58 @@ const ImportView = () => {
                 <CardContent className="space-y-4">
                   <div>
                     <Label htmlFor="repo-url" className="text-sm font-medium">Repository URL</Label>
-                    <Input
-                      id="repo-url"
-                      placeholder="https://github.com/org/repo.git"
-                      value={repoUrl}
-                      onChange={(e) => setRepoUrl(e.target.value)}
-                      className="bg-secondary border-border mt-2"
-                    />
+                    {repositories.length > 0 ? (
+                      <Select value={selectedRepo} onValueChange={handleRepoChange}>
+                        <SelectTrigger className="w-full bg-secondary border-border mt-2">
+                          <SelectValue placeholder="Select a repository" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-popover border-border z-50 max-h-[300px]">
+                          {repositories.map((repo) => (
+                            <SelectItem key={repo.id} value={repo.full_name} className="cursor-pointer">
+                              <span className="font-mono text-sm">{repo.full_name}</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        id="repo-url"
+                        placeholder="Connect to GitHub first"
+                        disabled
+                        className="bg-secondary border-border mt-2"
+                      />
+                    )}
                     <p className="text-xs text-muted-foreground mt-1">
                       Your Git repository where test cases will be stored
                     </p>
                   </div>
                   <div>
                     <Label htmlFor="branch" className="text-sm font-medium">Working Branch</Label>
-                    <Input
-                      id="branch"
-                      placeholder="main"
-                      value={branch}
-                      onChange={(e) => setBranch(e.target.value)}
-                      className="bg-secondary border-border mt-2"
-                    />
+                    {branches.length > 0 ? (
+                      <Select 
+                        value={selectedBranch} 
+                        onValueChange={setSelectedBranch}
+                        disabled={isLoadingBranches}
+                      >
+                        <SelectTrigger className="w-full bg-secondary border-border mt-2">
+                          <SelectValue placeholder={isLoadingBranches ? "Loading branches..." : "Select a branch"} />
+                        </SelectTrigger>
+                        <SelectContent className="bg-popover border-border z-50 max-h-[300px]">
+                          {branches.map((branch) => (
+                            <SelectItem key={branch.name} value={branch.name} className="cursor-pointer">
+                              <span className="font-mono text-sm">{branch.name}</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        id="branch"
+                        placeholder={isLoadingBranches ? "Loading branches..." : "Select a repository first"}
+                        disabled
+                        className="bg-secondary border-border mt-2"
+                      />
+                    )}
                     <p className="text-xs text-muted-foreground mt-1">
                       Branch to sync manual and automated test cases
                     </p>

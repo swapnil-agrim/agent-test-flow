@@ -30,10 +30,11 @@ interface Repository {
   ssh_url: string;
   html_url: string;
   private: boolean;
+  default_branch: string;
 }
 
 interface GitHubIntegrationProps {
-  onConnect?: (username: string, repoUrl: string) => void;
+  onConnect?: (repositories: Repository[], accessToken: string) => void;
 }
 
 const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
@@ -129,9 +130,8 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
               description: `Connected as ${data.user.login}. Found ${data.repositories.length} repositories.`,
             });
 
-            if (data.repositories[0]) {
-              onConnect?.(data.user.login, data.repositories[0].clone_url);
-            }
+            // Pass repositories and token to parent
+            onConnect?.(data.repositories, data.access_token);
             
             sessionStorage.removeItem('github_oauth_state');
           } catch (err: any) {
@@ -189,7 +189,6 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
     const repo = repositories.find(r => r.full_name === repoFullName);
     if (repo) {
       setSelectedRepo(repo);
-      onConnect?.(username, repo.clone_url);
     }
   };
 
