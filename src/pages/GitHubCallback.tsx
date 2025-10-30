@@ -13,13 +13,28 @@ const GitHubCallback = () => {
     const installationId = params.get('installation_id');
     const setupAction = params.get('setup_action');
 
+    console.log('[GitHubCallback] Params:', { code, state, error, installationId, setupAction });
+
     // Handle GitHub App installation callback
     if (setupAction === 'install' && installationId) {
+      console.log('[GitHubCallback] Installation complete, storing installation_id:', installationId);
       // Store installation ID for the parent window to use
       sessionStorage.setItem('github_installation_id', installationId);
-      // Close the popup so parent can continue with OAuth
-      if (window.opener) {
-        window.close();
+      
+      // Notify parent window
+      if (window.opener && !window.opener.closed) {
+        console.log('[GitHubCallback] Notifying parent of installation complete');
+        window.opener.postMessage(
+          { 
+            type: 'github-installation-complete',
+            installation_id: installationId
+          },
+          window.location.origin
+        );
+        // Give the parent a moment to receive the message
+        setTimeout(() => {
+          window.close();
+        }, 100);
       } else {
         navigate('/');
       }
@@ -28,7 +43,8 @@ const GitHubCallback = () => {
 
     // Handle OAuth errors
     if (error) {
-      if (window.opener) {
+      console.log('[GitHubCallback] OAuth error:', error, errorDescription);
+      if (window.opener && !window.opener.closed) {
         window.opener.postMessage(
           { 
             type: 'github-oauth-error', 
@@ -43,7 +59,8 @@ const GitHubCallback = () => {
 
     // Handle OAuth success
     if (code && state) {
-      if (window.opener) {
+      console.log('[GitHubCallback] OAuth success, code received');
+      if (window.opener && !window.opener.closed) {
         window.opener.postMessage(
           { 
             type: 'github-oauth-success', 
@@ -53,12 +70,17 @@ const GitHubCallback = () => {
           },
           window.location.origin
         );
+        setTimeout(() => {
+          window.close();
+        }, 100);
+      } else {
+        window.close();
       }
-      window.close();
       return;
     }
 
     // No relevant params, just navigate home
+    console.log('[GitHubCallback] No relevant params, navigating home');
     navigate('/');
   }, [navigate]);
 
