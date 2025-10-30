@@ -47,10 +47,12 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(false);
   const [accessToken, setAccessToken] = useState("");
+  const [receivedAuth, setReceivedAuth] = useState(false);
   const { toast } = useToast();
 
   const handleConnectToGitHub = () => {
     setIsConnecting(true);
+    setReceivedAuth(false);
     
     const clientId = import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined;
     const appName = import.meta.env.VITE_GITHUB_APP_NAME as string | undefined;
@@ -88,6 +90,7 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
       if (event.origin !== window.location.origin) return;
       
       if (event.data.type === 'github-oauth-success') {
+        setReceivedAuth(true);
         const { code, state: returnedState } = event.data;
         const storedState = sessionStorage.getItem('github_oauth_state');
         
@@ -155,6 +158,7 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
         popup?.close();
         window.removeEventListener('message', handleMessage);
       } else if (event.data.type === 'github-oauth-error') {
+        setReceivedAuth(true);
         setIsConnecting(false);
         toast({
           title: "Authorization Failed",
@@ -182,7 +186,7 @@ const GitHubIntegration = ({ onConnect }: GitHubIntegrationProps) => {
         if (popup.closed) {
           clearInterval(watch);
           window.removeEventListener('message', handleMessage);
-          if (!isConnected) {
+          if (!isConnected && !receivedAuth) {
             setIsConnecting(false);
             toast({
               title: "GitHub window closed",
